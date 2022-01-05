@@ -5,9 +5,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.util.StopWatch;
 import org.springframework.web.client.RestTemplate;
 
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -19,30 +17,39 @@ public class LoadTest {
 
 	static AtomicInteger couter = new AtomicInteger(0);
 
-	public static void main(String[] args) throws InterruptedException {
+	public static void main(String[] args) throws InterruptedException, BrokenBarrierException {
 		ExecutorService es = Executors.newFixedThreadPool(100);
 
 		RestTemplate rt = new RestTemplate();
-		String url = "http://localhost:8080/dr";
+		String url = "http://localhost:8080/rest?idx={idx}";
+
+		// 스레드 동기화
+		CyclicBarrier barrier = new CyclicBarrier(101);
 
 		StopWatch main = new StopWatch();
 		main.start();
 
 		for (int i = 0; i < 100; i++) {
-			es.execute(() -> {
+			es.submit(() -> {
 				int idx = couter.addAndGet(1);
+
+				barrier.await();
+
 				logger.info("Thread {}", idx);
 
 				StopWatch sw = new StopWatch();
 				sw.start();
 
-				rt.getForObject(url, String.class);
+				String res = rt.getForObject(url, String.class, idx);
 
 				sw.stop();
 
-				logger.info("Thread {} Elapsed : {}", idx, sw.getTotalTimeSeconds());
+				logger.info("Thread {} Elapsed : {}, Res: {}", idx, sw.getTotalTimeSeconds(), res);
+				return null;
 			});
 		}
+
+		barrier.await();
 
 		es.shutdown();
 		es.awaitTermination(100, TimeUnit.SECONDS);
